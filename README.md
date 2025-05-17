@@ -3,6 +3,10 @@
 A web application for transcribing and practicing music from YouTube videos.
 Entirely vibe-coded. Generated with v0.dev and edited via JetBrains AI (Qwen2.5, Claude Sonnet 3.7).
 
+<h4 align="center">
+  <a href="https://v0-next-js-music-app-liart.vercel.app">🚀 Try it out! 🚀</a>
+</h4>
+
 ## Features
 
 - Load and control YouTube videos directly in the app
