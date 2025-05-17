@@ -4,30 +4,35 @@ import type React from "react"
 
 import {useState, useRef} from "react"
 import ReactPlayer from "react-player/youtube"
-import {Play, Pause, RotateCcw, RotateCw, Repeat} from "lucide-react"
+import {Play, Pause, RotateCcw, RotateCw, Repeat, Save, MapPin, Pin} from "lucide-react"
 import {Slider} from "@/components/ui/slider"
 import {Button} from "@/components/ui/button"
 import {Input} from "@/components/ui/input"
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select"
-import {Accordion, AccordionContent, AccordionItem, AccordionTrigger} from "@/components/ui/accordion"
+import {Session, storageManager} from "@/lib/storage"
 
 interface YouTubePracticeProps {
-  defaultVideoUrl: string
+  defaultVideoUrl: string;
+  setSessionAction: (session: Session) => void;
+  session?: Session
 }
 
-export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
-  const [videoUrl, setVideoUrl] = useState(defaultVideoUrl)
+const makeVideoUrlFromId = (videoId: string): string => `https://www.youtube.com/watch?v=${videoId}`;
+
+export function Practice({defaultVideoUrl, setSessionAction, session}: YouTubePracticeProps) {
+  const [videoUrl, setVideoUrl] = useState(session?.videoId ? makeVideoUrlFromId(session.videoId) : defaultVideoUrl)
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [played, setPlayed] = useState(0)
   const [seeking, setSeeking] = useState(false)
-  const [playbackRate, setPlaybackRate] = useState(1)
-  const [videoTitle, setVideoTitle] = useState("")
+  const [playbackRate, setPlaybackRate] = useState(session?.playbackRate ?? 1)
+  const [videoTitle, setVideoTitle] = useState(session?.videoTitle ?? "")
   const [loopEnabled, setLoopEnabled] = useState(false)
-  const [loopStart, setLoopStart] = useState(0)
-  const [loopEnd, setLoopEnd] = useState(0)
-  const [videoInputUrl, setVideoInputUrl] = useState(defaultVideoUrl)
-  const [videoId, setVideoId] = useState("");
+  const [loopStart, setLoopStart] = useState(session?.loopStart ?? 0)
+  const [loopEnd, setLoopEnd] = useState(session?.loopEnd ?? 0)
+  const [videoInputUrl, setVideoInputUrl] = useState(session?.videoId ? makeVideoUrlFromId(session.videoId) : defaultVideoUrl)
+  const [videoId, setVideoId] = useState(session?.videoId ?? "");
+  const [isSaving, setIsSaving] = useState(false)
 
   const playerRef = useRef<ReactPlayer>(null)
 
@@ -137,23 +142,33 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
     playerRef.current?.seekTo(newTime)
   }
 
+  // Save current session with note
+  const handleSave = async () => {
+    if (!videoId) return;
+
+    let note = prompt("Add notes about this practice session\ntest", "Improved fluidity...");
+    if (note == null || note == "") return;
+
+    setIsSaving(true);
+    try {
+      const session = {
+        timestamp: Date.now(),
+        videoId,
+        videoTitle,
+        loopStart,
+        loopEnd,
+        playbackRate,
+        note
+      }
+      await storageManager.saveSession(session);
+      setSessionAction(session)
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="grid gap-8 max-w-2xl mx-auto">
-      <Accordion type="single" collapsible>
-        <AccordionItem value="tips">
-          <AccordionTrigger className="font-medium">Instructions</AccordionTrigger>
-          <AccordionContent>
-              <ul className="text-sm space-y-1">
-                <li>• Paste a YouTube URL and click "Load"</li>
-                <li>• Use the slider to navigate to specific parts of the song</li>
-                <li>• Enable loop mode and set start/end points to practice difficult sections</li>
-                <li>• Slow down the playback speed for detailed transcription</li>
-                <li>• Use the 5-second jump buttons for quick navigation</li>
-              </ul>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-
       <div className="flex flex-col gap-8">
         <form onSubmit={handleVideoUrlSubmit} className="flex gap-2">
           <Input
@@ -162,9 +177,9 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
             onChange={(e) => setVideoInputUrl(e.target.value)}
             placeholder="Enter YouTube URL"
             className="flex-1"
-            disabled={!videoId && videoUrl !== defaultVideoUrl}
+            disabled={isSaving || !videoId}
           />
-          <Button type="submit" disabled={!videoId && videoUrl !== defaultVideoUrl}>
+          <Button type="submit" disabled={isSaving || !videoId}>
             Load
           </Button>
         </form>
@@ -191,22 +206,23 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
             onPause={() => setIsPlaying(false)}
             onPlay={() => setIsPlaying(true)}
             onReady={(player) => {
-              // Get video title if available
               try {
                 const videoData = player.getInternalPlayer()
                 setVideoTitle(videoData?.getVideoData().title)
                 setVideoId(videoData?.getVideoData().video_id)
                 setLoopEnabled(false)
-                setLoopStart(0)
-                setLoopEnd(0)
+                setLoopStart(session?.loopStart ?? 0)
+                setLoopEnd(session?.loopEnd ?? 0)
+                setPlaybackRate(session?.playbackRate ?? 1)
               } catch (error) {
                 console.error(error) // TODO: real error handling
               }
             }}
             config={{
+              // @ts-expect-error Bad Typings
               youtube: {
                 playerVars: {
-                  autoplay: 1,
+                  autoplay: 0,
                   modestbranding: 1,
                   controls: 0,
                   disablekb: 1,
@@ -226,7 +242,7 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
         )}
       </div>
 
-      <div className="flex flex-col gap-8 space-y-8">
+      <div className="flex flex-col gap-8 space-y-4">
         <div className="grid gap-8">
           <div className="flex items-center justify-between">
             <div className="text-lg font-medium">Playback Controls</div>
@@ -236,28 +252,52 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Slider
-              value={[played * 100]}
-              min={0}
-              max={100}
-              step={0.1}
-              onValueChange={handleSeekChange}
-              onValueCommit={handleSeekMouseUp}
-              className="flex-1"
-            />
+            <div className="flex-1 relative">
+              {loopEnabled && (
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 h-2 bg-primary/20 rounded-full pointer-events-none"
+                  style={{
+                    left: `${(loopStart / duration) * 100}%`,
+                    right: `${100 - (loopEnd / duration) * 100}%`,
+                  }}
+                />
+              )}
+              <Slider
+                value={[played * 100]}
+                min={0}
+                max={100}
+                step={0.1}
+                onValueChange={handleSeekChange}
+                onValueCommit={handleSeekMouseUp}
+                className="relative"
+              />
+              {loopEnabled && (
+                <>
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-primary rounded"
+                    style={{left: `${(loopStart / duration) * 100}%`}}
+                  />
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-1 h-4 bg-primary rounded"
+                    style={{left: `${(loopEnd / duration) * 100}%`}}
+                  />
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <Button variant="outline" size="icon" onClick={jumpBack}>
+            <Button disabled={isSaving || !videoId} variant="outline" size="icon" onClick={jumpBack}>
               <RotateCcw className="h-4 w-4"/>
             </Button>
 
-            <Button variant="default" size="lg" onClick={() => setIsPlaying(!isPlaying)} className="flex-1">
+            <Button disabled={isSaving || !videoId} size="lg" onClick={() => setIsPlaying(!isPlaying)}
+                    className="flex-1">
               {isPlaying ? <Pause className="h-5 w-5 mr-2"/> : <Play className="h-5 w-5 mr-2"/>}
               {isPlaying ? "Pause" : "Play"}
             </Button>
 
-            <Button variant="outline" size="icon" onClick={jumpForward}>
+            <Button disabled={isSaving || !videoId} variant="outline" size="icon" onClick={jumpForward}>
               <RotateCw className="h-4 w-4"/>
             </Button>
           </div>
@@ -266,6 +306,7 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
             <div className="text-sm font-medium">Speed:</div>
             <Select
               value={playbackRate.toString()}
+              disabled={isSaving || !videoId}
               onValueChange={(value) => setPlaybackRate(Number.parseFloat(value))}
             >
               <SelectTrigger className="w-24">
@@ -282,7 +323,8 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
               </SelectContent>
             </Select>
 
-            <Button variant={loopEnabled ? "default" : "outline"} onClick={toggleLoop} className="ml-auto">
+            <Button disabled={isSaving || !videoId} variant={loopEnabled ? "default" : "outline"} onClick={toggleLoop}
+                    className="ml-auto">
               <Repeat className={`h-4 w-4 mr-2 ${loopEnabled ? "text-white" : ""}`}/>
               {loopEnabled ? "Loop On" : "Loop Off"}
             </Button>
@@ -290,11 +332,12 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
         </div>
 
         <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-8">
             <div>
               <div className="text-sm font-medium mb-2">Loop Start</div>
               <div className="flex items-center gap-2">
                 <Input
+                  disabled={isSaving || !videoId}
                   value={formatLoopTime(loopStart)}
                   onChange={(e) => {
                     const time = parseLoopTime(e.target.value)
@@ -302,7 +345,8 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
                   }}
                   className="flex-1"
                 />
-                <Button variant="outline" size="sm" onClick={setLoopStartToCurrent}>
+                <Button disabled={isSaving || !videoId} variant="outline" size="sm" onClick={setLoopStartToCurrent}>
+                  <Pin className="h-4 w-4 mr-2"/>
                   Set Current
                 </Button>
               </div>
@@ -312,6 +356,7 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
               <div className="text-sm font-medium mb-2">Loop End</div>
               <div className="flex items-center gap-2">
                 <Input
+                  disabled={isSaving || !videoId}
                   value={formatLoopTime(loopEnd)}
                   onChange={(e) => {
                     const time = parseLoopTime(e.target.value)
@@ -319,24 +364,20 @@ export function YouTubePractice({defaultVideoUrl}: YouTubePracticeProps) {
                   }}
                   className="flex-1"
                 />
-                <Button variant="outline" size="sm" onClick={setLoopEndToCurrent}>
+                <Button disabled={isSaving || !videoId} variant="outline" size="sm" onClick={setLoopEndToCurrent}>
+                  <Pin className="h-4 w-4 mr-2"/>
                   Set Current
                 </Button>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="relative pt-2">
-            <div className="h-2 bg-muted rounded-full">
-              <div
-                className="absolute h-2 bg-primary rounded-full"
-                style={{
-                  left: `${(loopStart / duration) * 100}%`,
-                  width: `${((loopEnd - loopStart) / duration) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
+        <div className="grid gap-4 pb-16">
+          <Button onClick={handleSave} disabled={isSaving || !videoId} size="lg" className="md:w-1/3 mx-auto">
+            <Save className="h-4 w-4 mr-2"/>
+            Save Current Session
+          </Button>
         </div>
       </div>
     </div>
