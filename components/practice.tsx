@@ -4,7 +4,7 @@ import type React from "react"
 
 import {useState, useRef} from "react"
 import ReactPlayer from "react-player/youtube"
-import {Play, Pause, RotateCcw, RotateCw, Repeat, Save, MapPin, Pin} from "lucide-react"
+import {Play, Pause, RotateCcw, RotateCw, Repeat, Save, Pin} from "lucide-react"
 import {Slider} from "@/components/ui/slider"
 import {Button} from "@/components/ui/button"
 import {Input} from "@/components/ui/input"
